@@ -30,7 +30,8 @@
 <p>
   This static research page contains enough visible text to satisfy the Safe
   Browsing intelligent-scan inner-text threshold in local instrumented builds.
-  Press the button to request fullscreen and then call navigator.keyboard.lock().
+  Press the button to advance the page URL, request fullscreen and then call
+  navigator.keyboard.lock().
   The page is intentionally non-phishing and only demonstrates that an ordinary
   web page can reach the keyboard-lock client-side detection path.
 </p>
@@ -52,7 +53,14 @@ function log(message, data = {}) {
 }
 
 async function triggerKeyboardLock() {
+  const scanId = Number(new URL(location.href).searchParams.get("scan") || "0") + 1;
+  const nextUrl = new URL(location.href);
+  nextUrl.searchParams.set("scan", String(scanId));
+  history.pushState({scanId}, "", nextUrl);
+
   log("start", {
+    href: location.href,
+    scanId,
     secureContext: window.isSecureContext,
     hasKeyboard: Boolean(navigator.keyboard),
     hasLock: Boolean(navigator.keyboard && navigator.keyboard.lock),
@@ -62,10 +70,10 @@ async function triggerKeyboardLock() {
   try {
     if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
       await document.documentElement.requestFullscreen();
-      log("fullscreen-ok", {fullscreen: Boolean(document.fullscreenElement)});
+      log("fullscreen-ok", {fullscreen: Boolean(document.fullscreenElement), scanId});
     }
   } catch (error) {
-    log("fullscreen-error", {name: error.name, message: error.message});
+    log("fullscreen-error", {name: error.name, message: error.message, scanId});
   }
 
   try {
@@ -74,9 +82,9 @@ async function triggerKeyboardLock() {
       return;
     }
     await navigator.keyboard.lock(["Escape"]);
-    log("keyboard-lock-ok", {fullscreen: Boolean(document.fullscreenElement)});
+    log("keyboard-lock-ok", {fullscreen: Boolean(document.fullscreenElement), scanId});
   } catch (error) {
-    log("keyboard-lock-error", {name: error.name, message: error.message});
+    log("keyboard-lock-error", {name: error.name, message: error.message, scanId});
   }
 }
 
