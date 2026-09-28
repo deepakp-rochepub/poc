@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Keyboard lock reachability research PoC</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    font-family: system-ui, sans-serif;
+  }
+
+  body {
+    margin: 2rem;
+    max-width: 760px;
+    line-height: 1.45;
+  }
+
+  button {
+    font: inherit;
+    padding: 0.6rem 0.9rem;
+  }
+
+  pre {
+    border: 1px solid color-mix(in srgb, CanvasText 24%, transparent);
+    border-radius: 6px;
+    min-height: 12rem;
+    padding: 1rem;
+    white-space: pre-wrap;
+  }
+</style>
+<h1>Keyboard lock reachability research PoC</h1>
+<p>
+  This static research page contains enough visible text to satisfy the Safe
+  Browsing intelligent-scan inner-text threshold in local instrumented builds.
+  Press the button to request fullscreen and then call navigator.keyboard.lock().
+  The page is intentionally non-phishing and only demonstrates that an ordinary
+  web page can reach the keyboard-lock client-side detection path.
+</p>
+<button id="trigger" type="button">Request keyboard lock</button>
+<pre id="log"></pre>
+<script>
+const logEl = document.querySelector("#log");
+window.__keyboardLockResults = [];
+
+function log(message, data = {}) {
+  const entry = {
+    message,
+    data,
+    time: new Date().toISOString(),
+  };
+  window.__keyboardLockResults.push(entry);
+  logEl.textContent += `${entry.time} ${message} ${JSON.stringify(data)}\n`;
+  document.title = `keyboard-lock:${message}`;
+}
+
+async function triggerKeyboardLock() {
+  log("start", {
+    secureContext: window.isSecureContext,
+    hasKeyboard: Boolean(navigator.keyboard),
+    hasLock: Boolean(navigator.keyboard && navigator.keyboard.lock),
+    fullscreen: Boolean(document.fullscreenElement),
+  });
+
+  try {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+      log("fullscreen-ok", {fullscreen: Boolean(document.fullscreenElement)});
+    }
+  } catch (error) {
+    log("fullscreen-error", {name: error.name, message: error.message});
+  }
+
+  try {
+    if (!navigator.keyboard || !navigator.keyboard.lock) {
+      log("keyboard-lock-missing");
+      return;
+    }
+    await navigator.keyboard.lock(["Escape"]);
+    log("keyboard-lock-ok", {fullscreen: Boolean(document.fullscreenElement)});
+  } catch (error) {
+    log("keyboard-lock-error", {name: error.name, message: error.message});
+  }
+}
+
+document.querySelector("#trigger").addEventListener("click", triggerKeyboardLock);
+</script>
