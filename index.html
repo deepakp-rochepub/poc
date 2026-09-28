@@ -16,6 +16,7 @@
   button {
     font: inherit;
     padding: 0.6rem 0.9rem;
+    margin-right: 0.5rem;
   }
 
   pre {
@@ -25,21 +26,68 @@
     padding: 1rem;
     white-space: pre-wrap;
   }
+
+  .status {
+    font-weight: 600;
+  }
 </style>
 <h1>Keyboard lock reachability research PoC</h1>
 <p>
   This static research page contains enough visible text to satisfy the Safe
   Browsing intelligent-scan inner-text threshold in local instrumented builds.
-  Press the button to advance the page URL, request fullscreen and then call
-  navigator.keyboard.lock().
+  Press the button to request fullscreen and then call navigator.keyboard.lock()
+  on the committed page URL. After a successful attempt, the page navigates to
+  the next scan URL so the next click happens on a distinct top-level document.
   The page is intentionally non-phishing and only demonstrates that an ordinary
   web page can reach the keyboard-lock client-side detection path.
 </p>
-<button id="trigger" type="button">Request keyboard lock</button>
+<p class="status" id="status"></p>
+<button id="trigger" type="button">Request keyboard lock for this URL</button>
+<button id="reset" type="button">Reset log</button>
 <pre id="log"></pre>
 <script>
 const logEl = document.querySelector("#log");
-window.__keyboardLockResults = [];
+const statusEl = document.querySelector("#status");
+const storageKey = "keyboard-lock-reachability-log";
+const maxScanCount = 8;
+
+function currentScanId() {
+  return Number(new URL(location.href).searchParams.get("scan") || "0");
+}
+
+function ensureCommittedScanUrl() {
+  if (currentScanId() > 0) {
+    return;
+  }
+  const firstUrl = new URL(location.href);
+  firstUrl.searchParams.set("scan", "1");
+  location.replace(firstUrl);
+}
+
+function readStoredResults() {
+  try {
+    return JSON.parse(sessionStorage.getItem(storageKey) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredResults(results) {
+  sessionStorage.setItem(storageKey, JSON.stringify(results));
+}
+
+window.__keyboardLockResults = readStoredResults();
+
+function render() {
+  const scanId = currentScanId();
+  statusEl.textContent = `Current committed scan URL: ${scanId || 1} of ${maxScanCount}`;
+  logEl.textContent = window.__keyboardLockResults
+    .map((entry) => `${entry.time} ${entry.message} ${JSON.stringify(entry.data)}`)
+    .join("\n");
+  if (logEl.textContent) {
+    logEl.textContent += "\n";
+  }
+}
 
 function log(message, data = {}) {
   const entry = {
@@ -48,15 +96,13 @@ function log(message, data = {}) {
     time: new Date().toISOString(),
   };
   window.__keyboardLockResults.push(entry);
-  logEl.textContent += `${entry.time} ${message} ${JSON.stringify(data)}\n`;
+  writeStoredResults(window.__keyboardLockResults);
+  render();
   document.title = `keyboard-lock:${message}`;
 }
 
 async function triggerKeyboardLock() {
-  const scanId = Number(new URL(location.href).searchParams.get("scan") || "0") + 1;
-  const nextUrl = new URL(location.href);
-  nextUrl.searchParams.set("scan", String(scanId));
-  history.pushState({scanId}, "", nextUrl);
+  const scanId = currentScanId();
 
   log("start", {
     href: location.href,
@@ -85,8 +131,28 @@ async function triggerKeyboardLock() {
     log("keyboard-lock-ok", {fullscreen: Boolean(document.fullscreenElement), scanId});
   } catch (error) {
     log("keyboard-lock-error", {name: error.name, message: error.message, scanId});
+    return;
+  }
+
+  if (scanId < maxScanCount) {
+    const nextUrl = new URL(location.href);
+    nextUrl.searchParams.set("scan", String(scanId + 1));
+    log("navigate-next", {fromScanId: scanId, toScanId: scanId + 1, href: nextUrl.href});
+    setTimeout(() => {
+      location.assign(nextUrl);
+    }, 800);
   }
 }
 
+function resetLog() {
+  sessionStorage.removeItem(storageKey);
+  const firstUrl = new URL(location.href);
+  firstUrl.searchParams.set("scan", "1");
+  location.replace(firstUrl);
+}
+
+ensureCommittedScanUrl();
+render();
 document.querySelector("#trigger").addEventListener("click", triggerKeyboardLock);
+document.querySelector("#reset").addEventListener("click", resetLog);
 </script>
